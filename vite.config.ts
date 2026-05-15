@@ -7,7 +7,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    base: './', // Makes asset imports relative, fixing the white screen on GitHub Pages
+    base: './',
     plugins: [
       react(), 
       tailwindcss(),
@@ -25,9 +25,10 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+    },
+    optimizeDeps: {
+      include: ['tiny-secp256k1', 'bitcoinjs-lib', 'ecpair'],
     },
   };
 });
