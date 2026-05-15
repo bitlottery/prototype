@@ -1,0 +1,524 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Coins, CheckCircle2, Copy, AlertTriangle, Anchor, ArrowRight, Loader2, Info } from 'lucide-react';
+import { 
+  generateSolWallet, sweepSol, getSolBalance, MAIN_WALLETS,
+  generateEthWallet, sweepEth, getEthBalance,
+  generateBtcWallet, sweepBtc, getBtcBalance 
+} from '../lib/crypto';
+import { Connection } from '@solana/web3.js';
+import { ethers } from 'ethers';
+
+const USD_PER_TICKET = 10;
+
+interface ParsedTx {
+  signature: string;
+  amountUsd: number;
+  time: string;
+  isDeposit: boolean;
+  currency: 'SOL' | 'ETH' | 'BTC';
+  timestamp: number;
+}
+
+export default function Home() {
+  const [prices, setPrices] = useState({ sol: 0, eth: 0, btc: 0 });
+  const [balances, setBalances] = useState({ sol: 0, eth: 0, btc: 0 });
+  const [transactions, setTransactions] = useState<ParsedTx[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // New Deposit System State
+  const [currency, setCurrency] = useState<'SOL' | 'ETH' | 'BTC'>('SOL');
+  const [payoutAddress, setPayoutAddress] = useState('');
+  
+  const [ephemeralWallet, setEphemeralWallet] = useState<any>(null);
+  const [ephemeralAddress, setEphemeralAddress] = useState('');
+  const [ephemeralBalance, setEphemeralBalance] = useState<number>(0);
+  
+  const [isSweeping, setIsSweeping] = useState(false);
+  const [sweepSuccess, setSweepSuccess] = useState(false);
+  const [ticketsEarned, setTicketsEarned] = useState(0);
+
+  // Login System State
+  const [loginAddress, setLoginAddress] = useState('');
+  const [userTickets, setUserTickets] = useState<number | null>(null);
+  const [poolPercentage, setPoolPercentage] = useState<number | null>(null);
+  const [loadingLogin, setLoadingLogin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchData = async () => {
+      try {
+        // Fetch Prices
+        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin&vs_currencies=usd');
+        const priceData = await priceRes.json();
+        const p = {
+          sol: priceData.solana?.usd || 0,
+          eth: priceData.ethereum?.usd || 0,
+          btc: priceData.bitcoin?.usd || 0
+        };
+        if (active) setPrices(p);
+
+        // Fetch Balances
+        const [solBal, ethBal, btcBal] = await Promise.all([
+          getSolBalance(), getEthBalance(), getBtcBalance()
+        ]);
+        if (active) setBalances({ sol: solBal, eth: ethBal, btc: btcBal });
+
+        // Fetch Transactions (Simplified for demo, fetching SOL and BTC, mocking ETH if needed)
+        let txs: ParsedTx[] = [];
+        
+        try {
+          const solConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+          const solSigs = await solConn.getSignaturesForAddress(new (await import('@solana/web3.js')).PublicKey(MAIN_WALLETS.SOL), { limit: 5 });
+          for (const sig of solSigs) {
+            txs.push({
+              signature: sig.signature,
+              amountUsd: 0, // We would parse the tx to get exact amount, mocking for speed in this demo
+              time: new Date((sig.blockTime || 0) * 1000).toLocaleString(),
+              isDeposit: true,
+              currency: 'SOL',
+              timestamp: sig.blockTime || 0
+            });
+          }
+        } catch(e) {}
+
+        try {
+          const btcRes = await fetch(`https://mempool.space/api/address/${MAIN_WALLETS.BTC}/txs`);
+          const btcData = await btcRes.json();
+          for(const tx of btcData.slice(0, 5)) {
+            txs.push({
+              signature: tx.txid,
+              amountUsd: 0,
+              time: new Date(tx.status.block_time * 1000).toLocaleString(),
+              isDeposit: true,
+              currency: 'BTC',
+              timestamp: tx.status.block_time
+            });
+          }
+        } catch(e) {}
+
+        if (active) {
+          setTransactions(txs.sort((a, b) => b.timestamp - a.timestamp));
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        if (active) setLoading(false);
+      }
+    };
+
+    fetchData();
+    const intervalId = setInterval(fetchData, 60000);
+    return () => { active = false; clearInterval(intervalId); };
+  }, []);
+
+  // Poll ephemeral wallet balance
+  useEffect(() => {
+    if (!ephemeralAddress || isSweeping || sweepSuccess) return;
+
+    let active = true;
+
+    const checkBalance = async () => {
+      try {
+        let bal = 0;
+        if (currency === 'SOL') {
+          const solConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+          bal = await solConn.getBalance(new (await import('@solana/web3.js')).PublicKey(ephemeralAddress));
+        } else if (currency === 'ETH') {
+          const ethProvider = new ethers.JsonRpcProvider('https://cloudflare-eth.com');
+          bal = Number(ethers.formatEther(await ethProvider.getBalance(ephemeralAddress)));
+        } else if (currency === 'BTC') {
+          const res = await fetch(`https://mempool.space/api/address/${ephemeralAddress}`);
+          const data = await res.json();
+          bal = (data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum) / 1e8;
+          if (bal === 0 && data.mempool_stats.funded_txo_sum > 0) {
+            // Count unconfirmed for sweeping
+            bal = data.mempool_stats.funded_txo_sum / 1e8;
+          }
+        }
+
+        if (active && bal > 0 && !isSweeping && !sweepSuccess) {
+          setEphemeralBalance(bal);
+          handleSweep();
+        }
+      } catch (error) {
+        console.error("Poll Error:", error);
+      }
+    };
+
+    const pollInterval = setInterval(checkBalance, 5000);
+    return () => { active = false; clearInterval(pollInterval); };
+  }, [ephemeralAddress, isSweeping, sweepSuccess, currency]);
+
+  const handleGenerateDeposit = () => {
+    const address = payoutAddress.trim();
+    if (!address) {
+      alert("Invalid Payout Address");
+      return;
+    }
+
+    try {
+      if (currency === 'SOL') {
+        const { keypair, address: addr } = generateSolWallet();
+        setEphemeralWallet(keypair);
+        setEphemeralAddress(addr);
+      } else if (currency === 'ETH') {
+        const { wallet, address: addr } = generateEthWallet();
+        setEphemeralWallet(wallet);
+        setEphemeralAddress(addr);
+      } else if (currency === 'BTC') {
+        const { keyPair, address: addr } = generateBtcWallet();
+        setEphemeralWallet(keyPair);
+        setEphemeralAddress(addr);
+      }
+      setSweepSuccess(false);
+      setIsSweeping(false);
+      setEphemeralBalance(0);
+    } catch(e) {
+      console.error(e);
+      alert("Error generating wallet. Ensure polyfills are loaded.");
+    }
+  };
+
+  const handleSweep = async () => {
+    if (!ephemeralWallet) return;
+    setIsSweeping(true);
+    
+    try {
+      let txHash = '';
+      let sweepAmount = 0;
+      let balanceBeforeFee = 0;
+
+      if (currency === 'SOL') {
+        const res = await sweepSol(ephemeralWallet);
+        txHash = res.txHash;
+        sweepAmount = res.sweepAmount / 1e9; // lamports to sol
+        balanceBeforeFee = res.balance / 1e9;
+      } else if (currency === 'ETH') {
+        const res = await sweepEth(ephemeralWallet);
+        txHash = res.txHash;
+        sweepAmount = res.sweepAmount;
+        balanceBeforeFee = res.balance;
+      } else if (currency === 'BTC') {
+        const res = await sweepBtc(ephemeralWallet);
+        txHash = res.txHash;
+        sweepAmount = res.sweepAmount;
+        balanceBeforeFee = res.balance;
+      }
+
+      // Calculate USD Value and Tickets
+      const usdValue = balanceBeforeFee * (prices[currency.toLowerCase() as keyof typeof prices] || 0);
+      const numTickets = usdValue / USD_PER_TICKET;
+
+      const entryDoc = {
+        payoutAddress: payoutAddress.trim(),
+        depositAddress: ephemeralAddress,
+        amount: balanceBeforeFee,
+        currency: currency,
+        usdValue: usdValue,
+        tickets: numTickets,
+        txHash: txHash,
+        timestamp: new Date().toISOString()
+      };
+
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      
+      const addDocPromise = addDoc(collection(db, 'entries'), entryDoc);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
+
+      try {
+        await Promise.race([addDocPromise, timeoutPromise]);
+      } catch (err: any) {
+        console.error("Firebase write failed, saving to localStorage:", err);
+        const fallbacks = JSON.parse(localStorage.getItem('ticket_fallbacks') || '[]');
+        fallbacks.push(entryDoc);
+        localStorage.setItem('ticket_fallbacks', JSON.stringify(fallbacks));
+        alert(`Warning: Database offline. We secured your tickets locally. Tx: ${txHash}`);
+      }
+
+      setTicketsEarned(numTickets);
+      setSweepSuccess(true);
+    } catch (e: any) {
+      console.error("Sweep Error:", e);
+      alert(`Error securing tickets: ${e?.message || 'Please contact support.'}`);
+    } finally {
+      setIsSweeping(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    const address = loginAddress.trim();
+    if (!address) {
+      alert("Invalid Address");
+      return;
+    }
+    setLoadingLogin(true);
+    try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      
+      const qUser = query(collection(db, 'entries'), where('payoutAddress', '==', address));
+      const snapshotUser = await getDocs(qUser);
+      
+      let totalUserTix = 0;
+      snapshotUser.forEach(doc => { totalUserTix += doc.data().tickets; });
+
+      setUserTickets(totalUserTix);
+
+      const qAll = query(collection(db, 'entries'));
+      const snapshotAll = await getDocs(qAll);
+      
+      let totalAllTix = 0;
+      snapshotAll.forEach(doc => { totalAllTix += doc.data().tickets; });
+
+      setPoolPercentage(totalAllTix > 0 ? (totalUserTix / totalAllTix) * 100 : 0);
+    } catch (e: any) {
+      console.error("Login Error:", e);
+      alert(`Error checking tickets: ${e?.message || 'Database connection error'}`);
+    } finally {
+      setLoadingLogin(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const totalPoolUsd = (balances.sol * prices.sol) + (balances.eth * prices.eth) + (balances.btc * prices.btc);
+  const formattedPrizePoolUsd = totalPoolUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+  return (
+    <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-sans selection:bg-yellow-400 selection:text-black pb-20">
+      <nav className="sticky top-0 z-50 bg-[#faf9f6] border-b-4 border-black p-4 flex justify-between items-center px-4 md:px-8">
+        <div className="flex items-center gap-2">
+          <div className="bg-yellow-400 border-2 border-black p-1.5 rounded-sm shadow-retro">
+            <Coins className="w-6 h-6 stroke-[2.5px]" />
+          </div>
+          <span className="text-2xl font-bold tracking-tight">BIT<span className="text-yellow-500">LOTTERY</span></span>
+        </div>
+      </nav>
+
+      {/* WARNING BANNER */}
+      <div className="bg-red-500 text-white font-bold text-center p-3 text-sm flex items-center justify-center gap-2">
+        <AlertTriangle className="w-5 h-5" /> 
+        <span>Do not close this window during a deposit. The private key exists only in your browser until swept!</span>
+      </div>
+
+      <section className="pt-12 pb-6 px-4 flex justify-center">
+        <div className="bg-white border-4 border-black p-8 md:p-12 rounded-xl shadow-retro-lg text-center w-full max-w-4xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-yellow-400"></div>
+          <h2 className="text-xl font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
+            Live USD Prize Pool
+          </h2>
+          
+          {loading && totalPoolUsd === 0 ? (
+            <div className="animate-pulse h-28 bg-gray-100 rounded-lg max-w-sm mx-auto mb-4 border-2 border-dashed border-gray-300"></div>
+          ) : (
+            <div className="text-6xl sm:text-7xl md:text-[8rem] font-black text-green-500 drop-shadow-[4px_4px_0_rgba(0,0,0,1)] font-mono tracking-tighter leading-none py-4">
+              {formattedPrizePoolUsd}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <header className="px-4 py-8 max-w-3xl mx-auto flex flex-col items-center text-center">
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-4 leading-tight">
+          The Multi-Chain Crypto Lottery
+        </h1>
+        <p className="text-base md:text-lg font-medium text-gray-700">
+          Now supporting SOL, ETH, and BTC! All prizes are combined into a massive USD pool.
+        </p>
+      </header>
+
+      {/* CHECK TICKETS / LOGIN SECTION */}
+      <section className="py-8 px-4">
+        <div className="max-w-4xl mx-auto bg-white text-black p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-black">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl md:text-4xl font-black uppercase mb-4">Check Your Tickets</h2>
+          </div>
+          <div className="max-w-xl mx-auto">
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+              <input 
+                type="text" 
+                value={loginAddress}
+                onChange={(e) => { setLoginAddress(e.target.value); setUserTickets(null); setPoolPercentage(null); }}
+                placeholder="Your Payout Address..."
+                className="flex-1 bg-gray-100 text-black p-4 rounded-xl font-mono border-2 border-black focus:border-yellow-400 outline-none"
+              />
+              <button 
+                onClick={handleLogin}
+                disabled={loadingLogin}
+                className="bg-black text-white font-black uppercase px-8 py-4 rounded-xl flex items-center justify-center hover:bg-gray-800 shadow-retro-hover hover:-translate-y-1 active:translate-y-1"
+              >
+                {loadingLogin ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Check'}
+              </button>
+            </div>
+            {userTickets !== null && poolPercentage !== null && (
+              <div className="bg-yellow-100 border-4 border-black p-6 rounded-xl text-center">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-4 border-2 border-black rounded-lg">
+                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Total Tickets</div>
+                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="bg-white p-4 border-2 border-black rounded-lg">
+                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Win Probability</div>
+                    <div className="text-3xl font-black text-green-600">{poolPercentage.toFixed(2)}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* NEW DEPOSIT SYSTEM SECTION */}
+      <section className="py-8 px-4">
+        <div className="max-w-4xl mx-auto bg-black text-white p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-yellow-400 relative">
+          <div className="grid md:grid-cols-2 gap-10 items-center">
+            
+            {/* Step 1: Exchange Rules & Address Request */}
+            <div>
+              <h2 className="text-3xl md:text-4xl font-black uppercase mb-4 text-yellow-400">Buy Tickets</h2>
+              <div className="font-mono text-xl md:text-2xl font-bold bg-white text-black inline-block px-4 py-2 rounded border-2 border-black mb-6">
+                $10 USD = 1 Ticket
+              </div>
+
+              {/* Currency Selector */}
+              <div className="flex gap-2 mb-6">
+                {['SOL', 'ETH', 'BTC'].map((c) => (
+                  <button 
+                    key={c}
+                    disabled={!!ephemeralAddress}
+                    onClick={() => setCurrency(c as 'SOL' | 'ETH' | 'BTC')}
+                    className={`flex-1 py-2 font-bold rounded border-2 border-transparent ${currency === c ? 'bg-yellow-400 text-black border-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'} disabled:opacity-50`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              <div className="bg-white/10 p-5 rounded-xl border border-gray-600 mb-6">
+                <label className="block text-sm font-bold uppercase mb-2 text-gray-300">Your {currency} Payout Address</label>
+                <input 
+                  type="text" 
+                  value={payoutAddress}
+                  onChange={(e) => setPayoutAddress(e.target.value)}
+                  placeholder="Where winnings go..."
+                  disabled={!!ephemeralAddress}
+                  className="w-full bg-white text-black p-3 rounded font-mono border-2 border-transparent outline-none mb-4"
+                />
+                {!ephemeralAddress ? (
+                  <button 
+                    onClick={handleGenerateDeposit}
+                    className="w-full bg-yellow-400 text-black font-black uppercase py-3 rounded hover:bg-yellow-300 transition-colors"
+                  >
+                    Generate Deposit Address
+                  </button>
+                ) : (
+                  <div className="text-sm text-green-400 font-bold flex items-center justify-center gap-2 mt-2">
+                    <CheckCircle2 className="w-5 h-5" /> Saved Payout Address
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Step 2: Show Ephemeral Address */}
+            <div className={`bg-white text-black p-6 md:p-8 rounded-xl border-4 ${ephemeralAddress ? 'border-yellow-400' : 'border-gray-500 opacity-50'} text-center relative flex flex-col justify-center transition-all min-h-[300px]`}>
+              {!ephemeralAddress ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <Anchor className="w-12 h-12 text-gray-400 mb-4" />
+                  <p className="font-bold text-gray-500 uppercase">Enter payout address</p>
+                </div>
+              ) : sweepSuccess ? (
+                <div className="flex flex-col items-center justify-center h-full animate-in fade-in zoom-in duration-500">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 border-4 border-green-500">
+                    <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-2xl font-black uppercase mb-2">Deposit Secured!</h3>
+                  <p className="font-mono text-xl font-bold bg-gray-100 p-2 rounded mb-2">+{ticketsEarned.toLocaleString(undefined, {maximumFractionDigits: 2})} Tickets</p>
+                </div>
+              ) : (
+                <div className="animate-in fade-in duration-500">
+                  <p className="font-black uppercase mb-2 text-gray-500 text-sm tracking-widest flex items-center justify-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    Waiting for {currency}...
+                  </p>
+                  
+                  <div className="bg-gray-100 p-4 rounded-lg mb-4 font-mono font-bold text-sm sm:text-base break-all border-2 border-black selection:bg-yellow-400">
+                    {ephemeralAddress}
+                  </div>
+
+                  {currency === 'ETH' && (
+                     <div className="mb-4 bg-yellow-100 text-yellow-800 p-2 rounded text-xs font-bold flex items-start gap-2 border border-yellow-300 text-left">
+                       <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                       <span>ETH network gas fees apply. If your deposit is less than the current gas fee, it cannot be processed.</span>
+                     </div>
+                  )}
+
+                  <button 
+                    onClick={() => copyToClipboard(ephemeralAddress)}
+                    className="w-full flex items-center justify-center gap-2 bg-yellow-400 text-black border-4 border-black font-black uppercase py-4 text-lg rounded-xl shadow-retro hover:shadow-retro-hover active:-translate-y-1 transition-all"
+                  >
+                    {copied ? <CheckCircle2 className="w-6 h-6"/> : <Copy className="w-6 h-6"/>}
+                    {copied ? 'Copied!' : 'Copy Address'}
+                  </button>
+
+                  {(isSweeping) && (
+                    <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-xl p-4">
+                      <Loader2 className="w-12 h-12 animate-spin text-yellow-500 mb-4" />
+                      <h3 className="font-black text-xl mb-2">Processing Deposit...</h3>
+                      <p className="text-sm text-center text-gray-600 text-red-500 font-bold">Do not close this window!</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 px-4">
+        <div className="max-w-4xl mx-auto bg-white border-4 border-black rounded-xl p-6 md:p-10 shadow-retro-lg">
+          <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-black">
+            <h2 className="text-2xl font-black uppercase flex items-center gap-3">
+              <Anchor className="text-yellow-500" /> Multi-Chain Ledger
+            </h2>
+            <div className="flex gap-2 text-xs font-mono font-bold bg-green-100 text-green-800 px-3 py-1 rounded border-2 border-green-800 items-center">
+              <span className="w-2 h-2 rounded-full bg-green-600 animate-pulse"></span> 
+              SYNCED
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            {loading && transactions.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 font-bold animate-pulse">Scanning blockchains...</div>
+            ) : transactions.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 font-bold">No recent transactions.</div>
+            ) : transactions.map((log, i) => (
+              <div key={i} className="flex justify-between items-center p-4 border-2 border-black rounded tracking-tight hover:bg-yellow-50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 rounded border-2 border-black bg-yellow-400">
+                    <span className="font-black text-xs">{log.currency}</span>
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm md:text-base">Network Transfer</div>
+                    <div className="text-xs text-gray-500 font-mono mt-1">Tx: {log.signature.slice(0, 12)}...</div>
+                  </div>
+                </div>
+                <div className="text-right flex flex-col items-end">
+                  <span className="text-xs text-black font-semibold uppercase">{log.time}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
