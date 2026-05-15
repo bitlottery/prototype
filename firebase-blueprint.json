@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "TicketEntry": {
+      "title": "Ticket Entry",
+      "description": "An entry in the lottery representing a user's ticket purchase",
+      "type": "object",
+      "properties": {
+        "payoutAddress": {
+          "type": "string",
+          "description": "The user's personal Solana address for receiving prizes"
+        },
+        "depositAddress": {
+          "type": "string",
+          "description": "The ephemeral wallet address used for the user's deposit"
+        },
+        "amountSol": {
+          "type": "number",
+          "description": "The amount of SOL deposited"
+        },
+        "tickets": {
+          "type": "integer",
+          "description": "The number of tickets awarded for the deposit"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The ISO timestamp of when the entry was created"
+        },
+        "txHash": {
+          "type": "string",
+          "description": "The transaction hash of the sweep from the ephemeral wallet to the vault"
+        }
+      },
+      "required": ["payoutAddress", "depositAddress", "amountSol", "tickets", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/entries/{entryId}": {
+      "schema": {
+        "$ref": "#/entities/TicketEntry"
+      },
+      "description": "Collection of all ticket entries"
+    }
+  }
+}

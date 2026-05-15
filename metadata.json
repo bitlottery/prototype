@@ -1,0 +1,6 @@
+{
+  "name": "BitLottery",
+  "description": "Prototype crypto lottery allowing users to purchase tickets with BTC, ETH, and SOL. Features bi-weekly payouts and maximum transparency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
