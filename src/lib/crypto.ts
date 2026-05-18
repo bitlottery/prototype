@@ -8,6 +8,7 @@ export const MAIN_WALLETS = {
   SOL: '8zx8hWKKSzrUA4kgxBrGJknAuUheoWTEcSAWmpFLUi85',
   ETH: '0x6967C36f7e77192c5FcD6f2822c9454cdD2A6CE6',
   BTC: 'bc1qmjvqynknn9hq622e7tph8unfxwmmhunze9rrgp',
+  USDT: '0x6967C36f7e77192c5FcD6f2822c9454cdD2A6CE6',
 };
 
 // ============================================
@@ -130,7 +131,7 @@ export async function sweepBtc(keyPair: any) {
   for (const utxo of utxos) {
     balance += utxo.value;
     const txRes = await fetch(`https://mempool.space/api/tx/${utxo.txid}/hex`);
-    const txHex = await txRes.text();
+    await txRes.text(); // fetch needed to validate UTXO exists
     psbt.addInput({
       hash: utxo.txid,
       index: utxo.vout,
@@ -155,12 +156,12 @@ export async function sweepBtc(keyPair: any) {
 
   psbt.signAllInputs(keyPair);
   psbt.finalizeAllInputs();
-  const txHex = psbt.extractTransaction().toHex();
+  const finalTxHex = psbt.extractTransaction().toHex();
 
   // Broadcast
   const broadcastRes = await fetch('https://mempool.space/api/tx', {
     method: 'POST',
-    body: txHex
+    body: finalTxHex
   });
   
   if (!broadcastRes.ok) {
@@ -181,6 +182,37 @@ export async function getBtcBalance() {
     const data = await res.json();
     const sats = data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum;
     return sats / 1e8;
+  } catch (e) {
+    console.error(e);
+    return 0;
+  }
+}
+
+// ============================================
+// USDT (ERC-20 on Ethereum)
+// ============================================
+const USDT_CONTRACT = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+const USDT_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+];
+
+export async function getUsdtBalance() {
+  try {
+    const contract = new ethers.Contract(USDT_CONTRACT, USDT_ABI, ethProvider);
+    const bal = await contract.balanceOf(MAIN_WALLETS.USDT);
+    return Number(bal) / 1e6; // USDT has 6 decimals
+  } catch (e) {
+    console.error(e);
+    return 0;
+  }
+}
+
+export async function getUsdtEphemeralBalance(address: string) {
+  try {
+    const contract = new ethers.Contract(USDT_CONTRACT, USDT_ABI, ethProvider);
+    const bal = await contract.balanceOf(address);
+    return Number(bal) / 1e6;
   } catch (e) {
     console.error(e);
     return 0;
