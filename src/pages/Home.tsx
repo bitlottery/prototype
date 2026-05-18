@@ -304,6 +304,8 @@ export default function Home() {
   };
 
   const totalPoolUsd = (balances.sol * prices.sol) + (balances.eth * prices.eth) + (balances.btc * prices.btc) + (balances.usdt * prices.usdt);
+  const totalPoolBtc = prices.btc > 0 ? totalPoolUsd / prices.btc : 0;
+  const formattedPrizePoolBtc = totalPoolBtc.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' BTC';
   const formattedPrizePoolUsd = totalPoolUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   return (
@@ -323,15 +325,20 @@ export default function Home() {
         <div className="bg-white border-4 border-black p-8 md:p-12 rounded-xl shadow-retro-lg text-center w-full max-w-4xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-2 bg-yellow-400"></div>
           <h2 className="text-xl font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-            Live USD Prize Pool
+            <span className="w-3 h-3 rounded-full bg-orange-500 animate-pulse"></span>
+            Live BTC Prize Pool
           </h2>
 
           {loading && totalPoolUsd === 0 ? (
-            <div className="animate-pulse h-28 bg-gray-100 rounded-lg max-w-sm mx-auto mb-4 border-2 border-dashed border-gray-300"></div>
+            <div className="animate-pulse h-36 bg-gray-100 rounded-lg max-w-sm mx-auto mb-4 border-2 border-dashed border-gray-300"></div>
           ) : (
-            <div className="text-6xl sm:text-7xl md:text-[8rem] font-black text-green-500 drop-shadow-[4px_4px_0_rgba(0,0,0,1)] font-mono tracking-tighter leading-none py-4">
-              {formattedPrizePoolUsd}
+            <div className="flex flex-col items-center justify-center">
+              <div className="text-5xl sm:text-6xl md:text-[6rem] font-black text-orange-500 drop-shadow-[4px_4px_0_rgba(0,0,0,1)] font-mono tracking-tighter leading-none py-4">
+                {formattedPrizePoolBtc}
+              </div>
+              <div className="text-2xl font-bold text-gray-400 mt-2 font-mono">
+                ≈ {formattedPrizePoolUsd}
+              </div>
             </div>
           )}
         </div>
