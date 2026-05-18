@@ -18,6 +18,8 @@ export default function Admin() {
   const [drawing, setDrawing] = useState(false);
   const [winner, setWinner] = useState<TicketEntry | null>(null);
   const [totalTickets, setTotalTickets] = useState(0);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -43,8 +45,45 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    fetchEntries();
-  }, []);
+    if (isAuthenticated) {
+      fetchEntries();
+    }
+  }, [isAuthenticated]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (btoa(passwordInput) === 'MzEx') {
+      setIsAuthenticated(true);
+    } else {
+      alert("Incorrect password");
+      setPasswordInput('');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono flex flex-col items-center justify-center p-8">
+        <div className="bg-white border-4 border-black p-8 shadow-retro-lg max-w-sm w-full">
+          <h1 className="text-2xl font-black uppercase mb-6 flex items-center gap-2 justify-center">
+            <ShieldCheck className="w-6 h-6 text-black" />
+            Admin Access
+          </h1>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <input 
+              type="password" 
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Password"
+              className="bg-gray-100 p-4 border-2 border-black outline-none focus:border-yellow-400"
+            />
+            <button type="submit" className="bg-black text-white font-black uppercase py-3 border-2 border-black hover:bg-gray-800 transition-colors shadow-retro-hover hover:-translate-y-1 active:translate-y-1">
+              Login
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   const handleDraw = () => {
     if (!window.confirm("Are you sure you want to trigger the draw? This will pick a winner!")) return;
