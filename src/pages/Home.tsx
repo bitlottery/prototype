@@ -317,11 +317,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* WARNING BANNER */}
-      <div className="bg-red-500 text-white font-bold text-center p-3 text-sm flex items-center justify-center gap-2">
-        <AlertTriangle className="w-5 h-5" />
-        <span>Do not close this window during a deposit. The private key exists only in your browser until swept!</span>
-      </div>
+
 
       <section className="pt-12 pb-6 px-4 flex justify-center">
         <div className="bg-white border-4 border-black p-8 md:p-12 rounded-xl shadow-retro-lg text-center w-full max-w-4xl relative overflow-hidden">
@@ -460,6 +456,12 @@ export default function Home() {
               )}
             </div>
 
+          </div>
+
+          {/* IN-BOX WARNING */}
+          <div className="mt-6 bg-red-500/20 border-2 border-red-500 text-red-300 rounded-xl p-3 text-sm font-bold flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />
+            <span>Do not close this window during a deposit. The private key exists only in your browser until swept!</span>
           </div>
         </div>
       </section>
