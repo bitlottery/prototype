@@ -8,7 +8,7 @@ import {
 import { Connection } from '@solana/web3.js';
 import { ethers } from 'ethers';
 
-const USD_PER_TICKET = 10;
+const USD_PER_TICKET = 1;
 
 interface ParsedTx {
   signature: string;
@@ -335,47 +335,6 @@ export default function Home() {
         </p>
       </header>
 
-      {/* CHECK TICKETS / LOGIN SECTION */}
-      <section className="py-8 px-4">
-        <div className="max-w-4xl mx-auto bg-white text-black p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-black">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-black uppercase mb-4">Check Your Tickets</h2>
-          </div>
-          <div className="max-w-xl mx-auto">
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <input 
-                type="text" 
-                value={loginAddress}
-                onChange={(e) => { setLoginAddress(e.target.value); setUserTickets(null); setPoolPercentage(null); }}
-                placeholder="Your Payout Address..."
-                className="flex-1 bg-gray-100 text-black p-4 rounded-xl font-mono border-2 border-black focus:border-yellow-400 outline-none"
-              />
-              <button 
-                onClick={handleLogin}
-                disabled={loadingLogin}
-                className="bg-black text-white font-black uppercase px-8 py-4 rounded-xl flex items-center justify-center hover:bg-gray-800 shadow-retro-hover hover:-translate-y-1 active:translate-y-1"
-              >
-                {loadingLogin ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Check'}
-              </button>
-            </div>
-            {userTickets !== null && poolPercentage !== null && (
-              <div className="bg-yellow-100 border-4 border-black p-6 rounded-xl text-center">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-4 border-2 border-black rounded-lg">
-                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Total Tickets</div>
-                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
-                  </div>
-                  <div className="bg-white p-4 border-2 border-black rounded-lg">
-                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Win Probability</div>
-                    <div className="text-3xl font-black text-green-600">{poolPercentage.toFixed(2)}%</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
       {/* NEW DEPOSIT SYSTEM SECTION */}
       <section className="py-8 px-4">
         <div className="max-w-4xl mx-auto bg-black text-white p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-yellow-400 relative">
@@ -385,7 +344,7 @@ export default function Home() {
             <div>
               <h2 className="text-3xl md:text-4xl font-black uppercase mb-4 text-yellow-400">Buy Tickets</h2>
               <div className="font-mono text-xl md:text-2xl font-bold bg-white text-black inline-block px-4 py-2 rounded border-2 border-black mb-6">
-                $10 USD = 1 Ticket
+                $1 USD = 1 Ticket
               </div>
 
               {/* Currency Selector */}
@@ -479,6 +438,47 @@ export default function Home() {
               )}
             </div>
 
+          </div>
+        </div>
+      </section>
+
+      {/* CHECK TICKETS / LOGIN SECTION */}
+      <section className="py-8 px-4">
+        <div className="max-w-4xl mx-auto bg-white text-black p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-black">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl md:text-4xl font-black uppercase mb-4">Check Your Tickets</h2>
+          </div>
+          <div className="max-w-xl mx-auto">
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+              <input 
+                type="text" 
+                value={loginAddress}
+                onChange={(e) => { setLoginAddress(e.target.value); setUserTickets(null); setPoolPercentage(null); }}
+                placeholder="Your Payout Address..."
+                className="flex-1 bg-gray-100 text-black p-4 rounded-xl font-mono border-2 border-black focus:border-yellow-400 outline-none"
+              />
+              <button 
+                onClick={handleLogin}
+                disabled={loadingLogin}
+                className="bg-black text-white font-black uppercase px-8 py-4 rounded-xl flex items-center justify-center hover:bg-gray-800 shadow-retro-hover hover:-translate-y-1 active:translate-y-1"
+              >
+                {loadingLogin ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Check'}
+              </button>
+            </div>
+            {userTickets !== null && poolPercentage !== null && (
+              <div className="bg-yellow-100 border-4 border-black p-6 rounded-xl text-center">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-4 border-2 border-black rounded-lg">
+                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Total Tickets</div>
+                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="bg-white p-4 border-2 border-black rounded-lg">
+                    <div className="text-sm font-bold text-gray-500 uppercase mb-1">Win Probability</div>
+                    <div className="text-3xl font-black text-green-600">{poolPercentage.toFixed(2)}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
