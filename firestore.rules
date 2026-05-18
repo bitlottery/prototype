@@ -8,14 +8,15 @@ service cloud.firestore {
     function incoming() { return request.resource.data; }
     
     function isValidTicketEntry(data) {
-      return data.keys().hasAll(['payoutAddress', 'depositAddress', 'amountSol', 'tickets', 'timestamp']) &&
-             data.keys().size() <= 6 &&
+      return data.keys().hasAll(['payoutAddress', 'depositAddress', 'amount', 'currency', 'usdValue', 'tickets', 'timestamp']) &&
              data.payoutAddress is string &&
-             data.payoutAddress.size() >= 32 && data.payoutAddress.size() <= 44 &&
+             data.payoutAddress.size() < 150 &&
              data.depositAddress is string &&
-             data.depositAddress.size() >= 32 && data.depositAddress.size() <= 44 &&
-             data.amountSol is number &&
-             data.amountSol > 0 &&
+             data.depositAddress.size() < 150 &&
+             data.amount is number &&
+             data.amount > 0 &&
+             data.currency is string &&
+             data.usdValue is number &&
              data.tickets is number &&
              data.tickets > 0 &&
              data.timestamp is string &&
@@ -26,7 +27,8 @@ service cloud.firestore {
     match /entries/{entryId} {
       allow read: if true;
       allow create: if isValidTicketEntry(incoming());
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if true;
     }
     
     match /system/{docId} {
