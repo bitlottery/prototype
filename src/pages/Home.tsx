@@ -328,10 +328,10 @@ export default function Home() {
 
       <header className="px-4 py-8 max-w-3xl mx-auto flex flex-col items-center text-center">
         <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-4 leading-tight">
-          The Multi-Chain Crypto Lottery
+          The world's premier crypto lottery
         </h1>
         <p className="text-base md:text-lg font-medium text-gray-700">
-          Now supporting SOL, ETH, and BTC! All prizes are combined into a massive USD pool.
+          Supporting SOL, ETH, and BTC! All prizes are combined into a massive global pool
         </p>
       </header>
 
