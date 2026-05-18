@@ -361,9 +361,12 @@ export default function Home() {
             {/* Step 1: Exchange Rules & Address Request */}
             <div>
               <h2 className="text-3xl md:text-4xl font-black uppercase mb-4 text-yellow-400">Buy Tickets</h2>
-              <div className="font-mono text-xl md:text-2xl font-bold bg-white text-black inline-block px-4 py-2 rounded border-2 border-black mb-6">
+              <div className="font-mono text-xl md:text-2xl font-bold bg-white text-black inline-block px-4 py-2 rounded border-2 border-black mb-4">
                 $1 USD = 1 Ticket
               </div>
+              <p className="text-sm font-bold text-gray-300 mb-6 border-l-4 border-yellow-400 pl-3">
+                Send <span className="text-white">ANY</span> amount to your vault wallet. The deposit will be automatically converted into tickets based on the current live exchange rate!
+              </p>
 
               {/* Currency Selector */}
               <div className="flex gap-2 mb-6">
