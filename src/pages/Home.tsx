@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Coins, CheckCircle2, Copy, AlertTriangle, Anchor, ArrowRight, Loader2, Info } from 'lucide-react';
-import { 
+import {
   generateSolWallet, sweepSol, getSolBalance, MAIN_WALLETS,
   generateEthWallet, sweepEth, getEthBalance,
-  generateBtcWallet, sweepBtc, getBtcBalance 
+  generateBtcWallet, sweepBtc, getBtcBalance,
+  getUsdtBalance, getUsdtEphemeralBalance
 } from '../lib/crypto';
 import { Connection } from '@solana/web3.js';
 import { ethers } from 'ethers';
@@ -15,25 +16,25 @@ interface ParsedTx {
   amountUsd: number;
   time: string;
   isDeposit: boolean;
-  currency: 'SOL' | 'ETH' | 'BTC';
+  currency: 'SOL' | 'ETH' | 'BTC' | 'USDT';
   timestamp: number;
 }
 
 export default function Home() {
-  const [prices, setPrices] = useState({ sol: 0, eth: 0, btc: 0 });
-  const [balances, setBalances] = useState({ sol: 0, eth: 0, btc: 0 });
+  const [prices, setPrices] = useState({ sol: 0, eth: 0, btc: 0, usdt: 1 });
+  const [balances, setBalances] = useState({ sol: 0, eth: 0, btc: 0, usdt: 0 });
   const [transactions, setTransactions] = useState<ParsedTx[]>([]);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // New Deposit System State
-  const [currency, setCurrency] = useState<'SOL' | 'ETH' | 'BTC'>('SOL');
+  const [currency, setCurrency] = useState<'SOL' | 'ETH' | 'BTC' | 'USDT'>('SOL');
   const [payoutAddress, setPayoutAddress] = useState('');
-  
+
   const [ephemeralWallet, setEphemeralWallet] = useState<any>(null);
   const [ephemeralAddress, setEphemeralAddress] = useState('');
   const [ephemeralBalance, setEphemeralBalance] = useState<number>(0);
-  
+
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepSuccess, setSweepSuccess] = useState(false);
   const [ticketsEarned, setTicketsEarned] = useState(0);
@@ -50,24 +51,25 @@ export default function Home() {
     const fetchData = async () => {
       try {
         // Fetch Prices
-        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin&vs_currencies=usd');
+        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin,tether&vs_currencies=usd');
         const priceData = await priceRes.json();
         const p = {
           sol: priceData.solana?.usd || 0,
           eth: priceData.ethereum?.usd || 0,
-          btc: priceData.bitcoin?.usd || 0
+          btc: priceData.bitcoin?.usd || 0,
+          usdt: priceData.tether?.usd || 1
         };
         if (active) setPrices(p);
 
         // Fetch Balances
-        const [solBal, ethBal, btcBal] = await Promise.all([
-          getSolBalance(), getEthBalance(), getBtcBalance()
+        const [solBal, ethBal, btcBal, usdtBal] = await Promise.all([
+          getSolBalance(), getEthBalance(), getBtcBalance(), getUsdtBalance()
         ]);
-        if (active) setBalances({ sol: solBal, eth: ethBal, btc: btcBal });
+        if (active) setBalances({ sol: solBal, eth: ethBal, btc: btcBal, usdt: usdtBal });
 
         // Fetch Transactions (Simplified for demo, fetching SOL and BTC, mocking ETH if needed)
         let txs: ParsedTx[] = [];
-        
+
         try {
           const solConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
           const solSigs = await solConn.getSignaturesForAddress(new (await import('@solana/web3.js')).PublicKey(MAIN_WALLETS.SOL), { limit: 5 });
@@ -81,12 +83,12 @@ export default function Home() {
               timestamp: sig.blockTime || 0
             });
           }
-        } catch(e) {}
+        } catch (e) { }
 
         try {
           const btcRes = await fetch(`https://mempool.space/api/address/${MAIN_WALLETS.BTC}/txs`);
           const btcData = await btcRes.json();
-          for(const tx of btcData.slice(0, 5)) {
+          for (const tx of btcData.slice(0, 5)) {
             txs.push({
               signature: tx.txid,
               amountUsd: 0,
@@ -96,7 +98,7 @@ export default function Home() {
               timestamp: tx.status.block_time
             });
           }
-        } catch(e) {}
+        } catch (e) { }
 
         if (active) {
           setTransactions(txs.sort((a, b) => b.timestamp - a.timestamp));
@@ -136,6 +138,8 @@ export default function Home() {
             // Count unconfirmed for sweeping
             bal = data.mempool_stats.funded_txo_sum / 1e8;
           }
+        } else if (currency === 'USDT') {
+          bal = await getUsdtEphemeralBalance(ephemeralAddress);
         }
 
         if (active && bal > 0 && !isSweeping && !sweepSuccess) {
@@ -171,11 +175,16 @@ export default function Home() {
         const { keyPair, address: addr } = generateBtcWallet();
         setEphemeralWallet(keyPair);
         setEphemeralAddress(addr);
+      } else if (currency === 'USDT') {
+        // USDT is ERC-20 on Ethereum, reuse ETH wallet
+        const { wallet, address: addr } = generateEthWallet();
+        setEphemeralWallet(wallet);
+        setEphemeralAddress(addr);
       }
       setSweepSuccess(false);
       setIsSweeping(false);
       setEphemeralBalance(0);
-    } catch(e) {
+    } catch (e) {
       console.error(e);
       alert("Error generating wallet. Ensure polyfills are loaded.");
     }
@@ -184,7 +193,7 @@ export default function Home() {
   const handleSweep = async () => {
     if (!ephemeralWallet) return;
     setIsSweeping(true);
-    
+
     try {
       let txHash = '';
       let sweepAmount = 0;
@@ -205,6 +214,12 @@ export default function Home() {
         txHash = res.txHash;
         sweepAmount = res.sweepAmount;
         balanceBeforeFee = res.balance;
+      } else if (currency === 'USDT') {
+        // USDT is ERC-20: can't auto-sweep without gas ETH.
+        // Record the deposit — admin sweeps later.
+        balanceBeforeFee = await getUsdtEphemeralBalance(ephemeralAddress);
+        sweepAmount = balanceBeforeFee;
+        txHash = 'pending-usdt-sweep';
       }
 
       // Calculate USD Value and Tickets
@@ -224,7 +239,7 @@ export default function Home() {
 
       const { collection, addDoc } = await import('firebase/firestore');
       const { db } = await import('../lib/firebase');
-      
+
       const addDocPromise = addDoc(collection(db, 'entries'), entryDoc);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
 
@@ -258,10 +273,10 @@ export default function Home() {
     try {
       const { collection, query, where, getDocs } = await import('firebase/firestore');
       const { db } = await import('../lib/firebase');
-      
+
       const qUser = query(collection(db, 'entries'), where('payoutAddress', '==', address));
       const snapshotUser = await getDocs(qUser);
-      
+
       let totalUserTix = 0;
       snapshotUser.forEach(doc => { totalUserTix += doc.data().tickets; });
 
@@ -269,7 +284,7 @@ export default function Home() {
 
       const qAll = query(collection(db, 'entries'));
       const snapshotAll = await getDocs(qAll);
-      
+
       let totalAllTix = 0;
       snapshotAll.forEach(doc => { totalAllTix += doc.data().tickets; });
 
@@ -288,7 +303,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const totalPoolUsd = (balances.sol * prices.sol) + (balances.eth * prices.eth) + (balances.btc * prices.btc);
+  const totalPoolUsd = (balances.sol * prices.sol) + (balances.eth * prices.eth) + (balances.btc * prices.btc) + (balances.usdt * prices.usdt);
   const formattedPrizePoolUsd = totalPoolUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   return (
@@ -304,7 +319,7 @@ export default function Home() {
 
       {/* WARNING BANNER */}
       <div className="bg-red-500 text-white font-bold text-center p-3 text-sm flex items-center justify-center gap-2">
-        <AlertTriangle className="w-5 h-5" /> 
+        <AlertTriangle className="w-5 h-5" />
         <span>Do not close this window during a deposit. The private key exists only in your browser until swept!</span>
       </div>
 
@@ -315,7 +330,7 @@ export default function Home() {
             <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
             Live USD Prize Pool
           </h2>
-          
+
           {loading && totalPoolUsd === 0 ? (
             <div className="animate-pulse h-28 bg-gray-100 rounded-lg max-w-sm mx-auto mb-4 border-2 border-dashed border-gray-300"></div>
           ) : (
@@ -331,7 +346,7 @@ export default function Home() {
           The world's premier crypto lottery
         </h1>
         <p className="text-base md:text-lg font-medium text-gray-700">
-          Supporting SOL, ETH, and BTC! All prizes are combined into a massive global pool
+          Supporting SOL, ETH, BTC, and USDT! All prizes are combined into a massive global pool
         </p>
       </header>
 
@@ -339,7 +354,7 @@ export default function Home() {
       <section className="py-8 px-4">
         <div className="max-w-4xl mx-auto bg-black text-white p-8 md:p-12 rounded-2xl shadow-retro-lg border-4 border-yellow-400 relative">
           <div className="grid md:grid-cols-2 gap-10 items-center">
-            
+
             {/* Step 1: Exchange Rules & Address Request */}
             <div>
               <h2 className="text-3xl md:text-4xl font-black uppercase mb-4 text-yellow-400">Buy Tickets</h2>
@@ -349,11 +364,11 @@ export default function Home() {
 
               {/* Currency Selector */}
               <div className="flex gap-2 mb-6">
-                {['SOL', 'ETH', 'BTC'].map((c) => (
-                  <button 
+                {['SOL', 'ETH', 'BTC', 'USDT'].map((c) => (
+                  <button
                     key={c}
                     disabled={!!ephemeralAddress}
-                    onClick={() => setCurrency(c as 'SOL' | 'ETH' | 'BTC')}
+                    onClick={() => setCurrency(c as 'SOL' | 'ETH' | 'BTC' | 'USDT')}
                     className={`flex-1 py-2 font-bold rounded border-2 border-transparent ${currency === c ? 'bg-yellow-400 text-black border-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'} disabled:opacity-50`}
                   >
                     {c}
@@ -363,8 +378,8 @@ export default function Home() {
 
               <div className="bg-white/10 p-5 rounded-xl border border-gray-600 mb-6">
                 <label className="block text-sm font-bold uppercase mb-2 text-gray-300">Your {currency} Payout Address</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={payoutAddress}
                   onChange={(e) => setPayoutAddress(e.target.value)}
                   placeholder="Where winnings go..."
@@ -372,7 +387,7 @@ export default function Home() {
                   className="w-full bg-white text-black p-3 rounded font-mono border-2 border-transparent outline-none mb-4"
                 />
                 {!ephemeralAddress ? (
-                  <button 
+                  <button
                     onClick={handleGenerateDeposit}
                     className="w-full bg-yellow-400 text-black font-black uppercase py-3 rounded hover:bg-yellow-300 transition-colors"
                   >
@@ -399,7 +414,7 @@ export default function Home() {
                     <CheckCircle2 className="w-8 h-8 text-green-600" />
                   </div>
                   <h3 className="text-2xl font-black uppercase mb-2">Deposit Secured!</h3>
-                  <p className="font-mono text-xl font-bold bg-gray-100 p-2 rounded mb-2">+{ticketsEarned.toLocaleString(undefined, {maximumFractionDigits: 2})} Tickets</p>
+                  <p className="font-mono text-xl font-bold bg-gray-100 p-2 rounded mb-2">+{ticketsEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })} Tickets</p>
                 </div>
               ) : (
                 <div className="animate-in fade-in duration-500">
@@ -407,23 +422,30 @@ export default function Home() {
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                     Waiting for {currency}...
                   </p>
-                  
+
                   <div className="bg-gray-100 p-4 rounded-lg mb-4 font-mono font-bold text-sm sm:text-base break-all border-2 border-black selection:bg-yellow-400">
                     {ephemeralAddress}
                   </div>
 
                   {currency === 'ETH' && (
-                     <div className="mb-4 bg-yellow-100 text-yellow-800 p-2 rounded text-xs font-bold flex items-start gap-2 border border-yellow-300 text-left">
-                       <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                       <span>ETH network gas fees apply. If your deposit is less than the current gas fee, it cannot be processed.</span>
-                     </div>
+                    <div className="mb-4 bg-yellow-100 text-yellow-800 p-2 rounded text-xs font-bold flex items-start gap-2 border border-yellow-300 text-left">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>ETH network gas fees apply. If your deposit is less than the current gas fee, it cannot be processed.</span>
+                    </div>
                   )}
 
-                  <button 
+                  {currency === 'USDT' && (
+                    <div className="mb-4 bg-green-100 text-green-800 p-2 rounded text-xs font-bold flex items-start gap-2 border border-green-300 text-left">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>Send only ERC-20 USDT on Ethereum mainnet. Do not send TRC-20 or other network variants — they will be lost.</span>
+                    </div>
+                  )}
+
+                  <button
                     onClick={() => copyToClipboard(ephemeralAddress)}
                     className="w-full flex items-center justify-center gap-2 bg-yellow-400 text-black border-4 border-black font-black uppercase py-4 text-lg rounded-xl shadow-retro hover:shadow-retro-hover active:-translate-y-1 transition-all"
                   >
-                    {copied ? <CheckCircle2 className="w-6 h-6"/> : <Copy className="w-6 h-6"/>}
+                    {copied ? <CheckCircle2 className="w-6 h-6" /> : <Copy className="w-6 h-6" />}
                     {copied ? 'Copied!' : 'Copy Address'}
                   </button>
 
@@ -450,19 +472,19 @@ export default function Home() {
           </div>
           <div className="max-w-xl mx-auto">
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={loginAddress}
                 onChange={(e) => { setLoginAddress(e.target.value); setUserTickets(null); setPoolPercentage(null); }}
                 placeholder="Your Payout Address..."
                 className="flex-1 bg-gray-100 text-black p-4 rounded-xl font-mono border-2 border-black focus:border-yellow-400 outline-none"
               />
-              <button 
+              <button
                 onClick={handleLogin}
                 disabled={loadingLogin}
                 className="bg-black text-white font-black uppercase px-8 py-4 rounded-xl flex items-center justify-center hover:bg-gray-800 shadow-retro-hover hover:-translate-y-1 active:translate-y-1"
               >
-                {loadingLogin ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Check'}
+                {loadingLogin ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Check'}
               </button>
             </div>
             {userTickets !== null && poolPercentage !== null && (
@@ -470,7 +492,7 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white p-4 border-2 border-black rounded-lg">
                     <div className="text-sm font-bold text-gray-500 uppercase mb-1">Total Tickets</div>
-                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                   </div>
                   <div className="bg-white p-4 border-2 border-black rounded-lg">
                     <div className="text-sm font-bold text-gray-500 uppercase mb-1">Win Probability</div>
@@ -490,11 +512,11 @@ export default function Home() {
               <Anchor className="text-yellow-500" /> Multi-Chain Ledger
             </h2>
             <div className="flex gap-2 text-xs font-mono font-bold bg-green-100 text-green-800 px-3 py-1 rounded border-2 border-green-800 items-center">
-              <span className="w-2 h-2 rounded-full bg-green-600 animate-pulse"></span> 
+              <span className="w-2 h-2 rounded-full bg-green-600 animate-pulse"></span>
               SYNCED
             </div>
           </div>
-          
+
           <div className="space-y-4">
             {loading && transactions.length === 0 ? (
               <div className="text-center py-12 text-gray-500 font-bold animate-pulse">Scanning blockchains...</div>
@@ -527,14 +549,14 @@ export default function Home() {
           {/* X (Twitter) */}
           <a href="#" className="p-3 bg-white border-2 border-black rounded-lg shadow-retro hover:-translate-y-1 hover:shadow-retro-hover transition-all text-black">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
             </svg>
           </a>
-          
+
           {/* Discord */}
           <a href="#" className="p-3 bg-white border-2 border-black rounded-lg shadow-retro hover:-translate-y-1 hover:shadow-retro-hover transition-all text-black">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
+              <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
             </svg>
           </a>
 
@@ -542,7 +564,7 @@ export default function Home() {
           <div className="relative group cursor-not-allowed">
             <div className="p-3 bg-gray-200 border-2 border-gray-400 rounded-lg text-gray-400 opacity-60 flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 15.68a6.34 6.34 0 006.27 6.36A6.29 6.29 0 0017.62 16V9.29a8.4 8.4 0 004.38 1.24v-3.5a5.53 5.53 0 01-2.41-.34z"/>
+                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 15.68a6.34 6.34 0 006.27 6.36A6.29 6.29 0 0017.62 16V9.29a8.4 8.4 0 004.38 1.24v-3.5a5.53 5.53 0 01-2.41-.34z" />
               </svg>
             </div>
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded border-2 border-black shadow-retro whitespace-nowrap rotate-6 pointer-events-none group-hover:scale-110 transition-transform">
