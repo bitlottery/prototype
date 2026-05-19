@@ -7,18 +7,26 @@
       "properties": {
         "payoutAddress": {
           "type": "string",
-          "description": "The user's personal Solana address for receiving prizes"
+          "description": "The user's address for receiving prizes"
         },
         "depositAddress": {
           "type": "string",
           "description": "The ephemeral wallet address used for the user's deposit"
         },
-        "amountSol": {
+        "amount": {
           "type": "number",
-          "description": "The amount of SOL deposited"
+          "description": "The amount of cryptocurrency deposited"
+        },
+        "currency": {
+          "type": "string",
+          "description": "The currency of the deposit (SOL, ETH, BTC, USDT)"
+        },
+        "usdValue": {
+          "type": "number",
+          "description": "The USD value of the deposit at transaction time"
         },
         "tickets": {
-          "type": "integer",
+          "type": "number",
           "description": "The number of tickets awarded for the deposit"
         },
         "timestamp": {
@@ -27,10 +35,10 @@
         },
         "txHash": {
           "type": "string",
-          "description": "The transaction hash of the sweep from the ephemeral wallet to the vault"
+          "description": "The transaction hash of the sweep or transaction identifier"
         }
       },
-      "required": ["payoutAddress", "depositAddress", "amountSol", "tickets", "timestamp"]
+      "required": ["payoutAddress", "depositAddress", "amount", "currency", "usdValue", "tickets", "timestamp"]
     }
   },
   "firestore": {
