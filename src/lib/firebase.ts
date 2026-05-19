@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDocFromServer, initializeFirestore } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import rawConfig from '../../firebase-applet-config.json';
 
 // In some Vite setups, JSON imports are nested in a 'default' property
@@ -10,6 +11,8 @@ const app = initializeApp(firebaseConfig);
 export const db = firebaseConfig.firestoreDatabaseId 
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
+
+export const auth = getAuth(app);
 
 export async function testConnection() {
   try {
