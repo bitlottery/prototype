@@ -7,7 +7,9 @@ const firebaseConfig = (rawConfig as any).default || rawConfig;
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = firebaseConfig.firestoreDatabaseId 
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
 
 export async function testConnection() {
   try {
