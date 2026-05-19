@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, RefreshCw, AlertTriangle, ShieldCheck, Trash2 } from 'lucide-react';
+import { Trophy, RefreshCw, AlertTriangle, ShieldCheck, Trash2, LogOut } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 interface TicketEntry {
   payoutAddress: string;
@@ -15,11 +17,11 @@ interface TicketEntry {
 export default function Admin() {
   const [entries, setEntries] = useState<TicketEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
   const [drawing, setDrawing] = useState(false);
   const [winner, setWinner] = useState<TicketEntry | null>(null);
   const [totalTickets, setTotalTickets] = useState(0);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
+  const [user, setUser] = useState<User | null>(null);
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -30,10 +32,8 @@ export default function Admin() {
       const snapshot = await getDocs(collection(db, 'entries'));
       const data: TicketEntry[] = snapshot.docs.map(doc => {
         const d = doc.data() as TicketEntry;
-        // Store doc id to allow clearing
         return { ...d, _id: doc.id };
       });
-      // Sort manually to avoid needing a Firestore composite index
       data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setEntries(data);
     } catch (e: any) {
@@ -45,45 +45,35 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchEntries();
-    }
-  }, [isAuthenticated]);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setAuthLoading(false);
+      if (firebaseUser && firebaseUser.email === 'bit.lottery.admin@gmail.com') {
+        fetchEntries();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (btoa(passwordInput) === 'MzEx') {
-      setIsAuthenticated(true);
-    } else {
-      alert("Incorrect password");
-      setPasswordInput('');
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e: any) {
+      console.error("Login error:", e);
+      alert(`Google Login failed: ${e?.message || e}`);
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono flex flex-col items-center justify-center p-8">
-        <div className="bg-white border-4 border-black p-8 shadow-retro-lg max-w-sm w-full">
-          <h1 className="text-2xl font-black uppercase mb-6 flex items-center gap-2 justify-center">
-            <ShieldCheck className="w-6 h-6 text-black" />
-            Admin Access
-          </h1>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <input 
-              type="password" 
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              placeholder="Password"
-              className="bg-gray-100 p-4 border-2 border-black outline-none focus:border-yellow-400"
-            />
-            <button type="submit" className="bg-black text-white font-black uppercase py-3 border-2 border-black hover:bg-gray-800 transition-colors shadow-retro-hover hover:-translate-y-1 active:translate-y-1">
-              Login
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setEntries([]);
+      setWinner(null);
+    } catch (e: any) {
+      console.error("Logout error:", e);
+    }
+  };
 
   const handleDraw = () => {
     if (!window.confirm("Are you sure you want to trigger the draw? This will pick a winner!")) return;
@@ -121,21 +111,13 @@ export default function Admin() {
     if (!window.confirm("WARNING: This will permanently delete all ticket entries. Cannot be undone. Are you sure?")) return;
     if (!window.confirm("FINAL CONFIRMATION: Double check before deleting the entire database. Proceed?")) return;
     try {
-      const { doc, deleteDoc, setDoc } = await import('firebase/firestore');
+      const { doc, deleteDoc } = await import('firebase/firestore');
       const { db } = await import('../lib/firebase');
       
-      // Write temporary session document to authorize the deletion
-      await setDoc(doc(db, 'adminSessions', 'active'), { passcode: btoa(passwordInput) });
-      
-      try {
-        for (const entry of entries) {
-          if ((entry as any)._id) {
-            await deleteDoc(doc(db, 'entries', (entry as any)._id));
-          }
+      for (const entry of entries) {
+        if ((entry as any)._id) {
+          await deleteDoc(doc(db, 'entries', (entry as any)._id));
         }
-      } finally {
-        // Always clean up the temporary session document
-        await deleteDoc(doc(db, 'adminSessions', 'active'));
       }
       
       setEntries([]);
@@ -146,19 +128,80 @@ export default function Admin() {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono flex items-center justify-center p-8">
+        <div className="text-xl font-bold animate-pulse">Initializing Auth...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono flex flex-col items-center justify-center p-8">
+        <div className="bg-white border-4 border-black p-8 shadow-retro-lg max-w-sm w-full text-center">
+          <h1 className="text-2xl font-black uppercase mb-6 flex items-center gap-2 justify-center">
+            <ShieldCheck className="w-6 h-6 text-black" />
+            Admin Access
+          </h1>
+          <p className="text-sm font-bold text-gray-600 mb-6">
+            Only authorized Google accounts can manage drawings and clear ledger entries.
+          </p>
+          <button 
+            onClick={handleLogin}
+            className="w-full bg-yellow-400 text-black font-black uppercase py-4 border-2 border-black hover:bg-yellow-300 transition-colors shadow-retro-hover hover:-translate-y-1 active:translate-y-1"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.email !== 'bit.lottery.admin@gmail.com') {
+    return (
+      <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono flex flex-col items-center justify-center p-8">
+        <div className="bg-white border-4 border-black p-8 shadow-retro-lg max-w-md w-full text-center">
+          <h1 className="text-2xl font-black uppercase mb-4 text-red-500 flex items-center gap-2 justify-center">
+            <AlertTriangle className="w-6 h-6" />
+            Access Denied
+          </h1>
+          <p className="text-sm font-bold text-gray-700 mb-6">
+            You are signed in as <span className="font-mono text-black">{user.email}</span>. Only <span className="font-mono text-black">bit.lottery.admin@gmail.com</span> is authorized to view this page.
+          </p>
+          <button 
+            onClick={handleLogout}
+            className="w-full bg-black text-white font-black uppercase py-4 border-2 border-black hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-5 h-5" /> Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#faf9f6] text-[#0f172a] font-mono p-8">
-      <header className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
-        <h1 className="text-3xl font-black uppercase flex items-center gap-3">
-          <ShieldCheck className="w-8 h-8 text-black" />
-          Internal Draw Admin
-        </h1>
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 border-b-4 border-black pb-4">
+        <div>
+          <h1 className="text-3xl font-black uppercase flex items-center gap-3">
+            <ShieldCheck className="w-8 h-8 text-black" />
+            Internal Draw Admin
+          </h1>
+          <p className="text-xs text-gray-500 font-bold mt-1">Logged in as {user.email}</p>
+        </div>
         <div className="flex gap-4">
           <button 
             onClick={fetchEntries}
             className="flex items-center gap-2 bg-white border-2 border-black px-4 py-2 font-bold hover:bg-gray-100 transition-colors"
           >
             <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 bg-black text-white border-2 border-black px-4 py-2 font-bold hover:bg-gray-800 transition-colors"
+          >
+            <LogOut className="w-4 h-4" /> Log Out
           </button>
           <button 
             onClick={clearEntries}
