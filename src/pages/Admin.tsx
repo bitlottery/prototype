@@ -121,13 +121,21 @@ export default function Admin() {
     if (!window.confirm("WARNING: This will permanently delete all ticket entries. Cannot be undone. Are you sure?")) return;
     if (!window.confirm("FINAL CONFIRMATION: Double check before deleting the entire database. Proceed?")) return;
     try {
-      const { doc, deleteDoc } = await import('firebase/firestore');
+      const { doc, deleteDoc, setDoc } = await import('firebase/firestore');
       const { db } = await import('../lib/firebase');
       
-      for (const entry of entries) {
-        if ((entry as any)._id) {
-          await deleteDoc(doc(db, 'entries', (entry as any)._id));
+      // Write temporary session document to authorize the deletion
+      await setDoc(doc(db, 'adminSessions', 'active'), { passcode: btoa(passwordInput) });
+      
+      try {
+        for (const entry of entries) {
+          if ((entry as any)._id) {
+            await deleteDoc(doc(db, 'entries', (entry as any)._id));
+          }
         }
+      } finally {
+        // Always clean up the temporary session document
+        await deleteDoc(doc(db, 'adminSessions', 'active'));
       }
       
       setEntries([]);
