@@ -112,6 +112,41 @@ export default function Home() {
 
     fetchData();
     const intervalId = setInterval(fetchData, 60000);
+
+    // Sync localStorage fallbacks to Firebase
+    const syncFallbacks = async () => {
+      const fallbacksRaw = localStorage.getItem('ticket_fallbacks');
+      if (!fallbacksRaw) return;
+      try {
+        const fallbacks = JSON.parse(fallbacksRaw);
+        if (fallbacks.length === 0) return;
+
+        const { collection, addDoc } = await import('firebase/firestore');
+        const { db } = await import('../lib/firebase');
+
+        const remaining = [...fallbacks];
+        for (let i = 0; i < fallbacks.length; i++) {
+          const entry = fallbacks[i];
+          try {
+            await addDoc(collection(db, 'entries'), entry);
+            remaining.shift(); // remove successfully written entry
+          } catch (err) {
+            console.error("Failed to sync fallback entry:", err);
+            break; // Stop syncing if there is a network issue
+          }
+        }
+        if (remaining.length === 0) {
+          localStorage.removeItem('ticket_fallbacks');
+          console.log("All local ticket fallbacks synced to Firebase successfully.");
+        } else {
+          localStorage.setItem('ticket_fallbacks', JSON.stringify(remaining));
+        }
+      } catch (e) {
+        console.error("Error syncing fallbacks:", e);
+      }
+    };
+    setTimeout(syncFallbacks, 3000);
+
     return () => { active = false; clearInterval(intervalId); };
   }, []);
 
@@ -226,8 +261,12 @@ export default function Home() {
       const usdValue = balanceBeforeFee * (prices[currency.toLowerCase() as keyof typeof prices] || 0);
       const numTickets = usdValue / USD_PER_TICKET;
 
+      const normalizedPayout = payoutAddress.trim().toLowerCase().startsWith('0x')
+        ? payoutAddress.trim().toLowerCase()
+        : payoutAddress.trim();
+
       const entryDoc = {
-        payoutAddress: payoutAddress.trim(),
+        payoutAddress: normalizedPayout,
         depositAddress: ephemeralAddress,
         amount: balanceBeforeFee,
         currency: currency,
@@ -264,10 +303,13 @@ export default function Home() {
   };
 
   const handleLogin = async () => {
-    const address = loginAddress.trim();
+    let address = loginAddress.trim();
     if (!address) {
       alert("Invalid Address");
       return;
+    }
+    if (address.toLowerCase().startsWith('0x')) {
+      address = address.toLowerCase();
     }
     setLoadingLogin(true);
     try {
