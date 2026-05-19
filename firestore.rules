@@ -28,7 +28,14 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidTicketEntry(incoming());
       allow update: if false;
-      allow delete: if true;
+      allow delete: if exists(/databases/$(database)/documents/adminSessions/active) &&
+                       get(/databases/$(database)/documents/adminSessions/active).data.passcode == 'MzEx';
+    }
+    
+    match /adminSessions/active {
+      allow create: if incoming().passcode == 'MzEx';
+      allow delete: if resource.data.passcode == 'MzEx';
+      allow read: if false;
     }
     
     match /system/{docId} {
