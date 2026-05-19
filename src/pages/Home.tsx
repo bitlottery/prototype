@@ -28,7 +28,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   // New Deposit System State
-  const [currency, setCurrency] = useState<'SOL' | 'ETH' | 'BTC' | 'USDT'>('SOL');
+  const [currency, setCurrency] = useState<'SOL' | 'ETH' | 'BTC' | 'USDT'>('BTC');
   const [payoutAddress, setPayoutAddress] = useState('');
 
   const [ephemeralWallet, setEphemeralWallet] = useState<any>(null);
@@ -370,7 +370,7 @@ export default function Home() {
 
               {/* Currency Selector */}
               <div className="flex gap-2 mb-6">
-                {['SOL', 'ETH', 'BTC', 'USDT'].map((c) => (
+                {['BTC', 'ETH', 'SOL', 'USDT'].map((c) => (
                   <button
                     key={c}
                     disabled={!!ephemeralAddress}
