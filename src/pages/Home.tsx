@@ -347,7 +347,7 @@ export default function Home() {
 
   const totalPoolUsd = (balances.sol * prices.sol) + (balances.eth * prices.eth) + (balances.btc * prices.btc) + (balances.usdt * prices.usdt);
   const totalPoolBtc = prices.btc > 0 ? totalPoolUsd / prices.btc : 0;
-  const formattedPrizePoolBtc = totalPoolBtc.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' BTC';
+  const formattedPrizePoolBtc = totalPoolBtc.toLocaleString('en-US', { minimumFractionDigits: 8, maximumFractionDigits: 8 }) + ' BTC';
   const formattedPrizePoolUsd = totalPoolUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   return (
@@ -543,14 +543,18 @@ export default function Home() {
             </div>
             {userTickets !== null && poolPercentage !== null && (
               <div className="bg-yellow-100 border-4 border-black p-6 rounded-xl text-center">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="bg-white p-4 border-2 border-black rounded-lg">
                     <div className="text-sm font-bold text-gray-500 uppercase mb-1">Total Tickets</div>
-                    <div className="text-3xl font-black">{userTickets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                    <div className="text-3xl font-black">
+                      {userTickets > 0 && userTickets < 0.0001 ? "0.0001" : userTickets.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                    </div>
                   </div>
                   <div className="bg-white p-4 border-2 border-black rounded-lg">
                     <div className="text-sm font-bold text-gray-500 uppercase mb-1">Win Probability</div>
-                    <div className="text-3xl font-black text-green-600">{poolPercentage.toFixed(2)}%</div>
+                    <div className="text-3xl font-black text-green-600">
+                      {poolPercentage > 0 && poolPercentage < 0.0001 ? "< 0.0001" : poolPercentage.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}%
+                    </div>
                   </div>
                 </div>
               </div>
