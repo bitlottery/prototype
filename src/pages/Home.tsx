@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Coins, CheckCircle2, Copy, AlertTriangle, Anchor, ArrowRight, Loader2, Info } from 'lucide-react';
+import { Coins, CheckCircle2, Copy, AlertTriangle, Anchor, ArrowRight, Loader2, Info, Clock } from 'lucide-react';
 import {
   generateSolWallet, sweepSol, getSolBalance, MAIN_WALLETS,
   generateEthWallet, sweepEth, getEthBalance,
@@ -44,6 +44,10 @@ export default function Home() {
   const [userTickets, setUserTickets] = useState<number | null>(null);
   const [poolPercentage, setPoolPercentage] = useState<number | null>(null);
   const [loadingLogin, setLoadingLogin] = useState(false);
+
+  // Countdown State
+  const [countdownTarget, setCountdownTarget] = useState<string>('');
+  const [countdownText, setCountdownText] = useState<string>('');
 
   useEffect(() => {
     let active = true;
@@ -100,6 +104,17 @@ export default function Home() {
           }
         } catch (e) { }
 
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const { db } = await import('../lib/firebase');
+          const snap = await getDoc(doc(db, 'system', 'countdown'));
+          if (snap.exists() && active) {
+            setCountdownTarget(snap.data().targetDate || '');
+          }
+        } catch (e) {
+          console.error("Error fetching countdown:", e);
+        }
+
         if (active) {
           setTransactions(txs.sort((a, b) => b.timestamp - a.timestamp));
           setLoading(false);
@@ -149,6 +164,46 @@ export default function Home() {
 
     return () => { active = false; clearInterval(intervalId); };
   }, []);
+
+  // Ticking effect for the countdown
+  useEffect(() => {
+    if (!countdownTarget) {
+      setCountdownText('');
+      return;
+    }
+
+    const targetTime = new Date(countdownTarget).getTime();
+    if (isNaN(targetTime)) {
+      setCountdownText('');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const diff = targetTime - now;
+
+      if (diff <= 0) {
+        setCountdownText('00h 00m 00s');
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const dStr = days > 0 ? `${days}d ` : '';
+      const hStr = `${hours.toString().padStart(2, '0')}h `;
+      const mStr = `${minutes.toString().padStart(2, '0')}m `;
+      const sStr = `${seconds.toString().padStart(2, '0')}s`;
+
+      setCountdownText(`${dStr}${hStr}${mStr}${sStr}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [countdownTarget]);
 
   // Poll ephemeral wallet balance
   useEffect(() => {
@@ -359,6 +414,13 @@ export default function Home() {
           </div>
           <span className="text-2xl font-bold tracking-tight">BIT<span className="text-yellow-500">LOTTERY</span></span>
         </div>
+
+        {countdownText && (
+          <div className="flex items-center gap-2 font-mono text-sm sm:text-base border-2 border-black bg-yellow-400 px-3 py-1.5 shadow-retro">
+            <Clock className="w-4 h-4 shrink-0 text-black" />
+            <span className="font-black uppercase tracking-tight text-black">{countdownText}</span>
+          </div>
+        )}
       </nav>
 
 
