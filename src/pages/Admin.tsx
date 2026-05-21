@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, RefreshCw, AlertTriangle, ShieldCheck, Trash2, LogOut } from 'lucide-react';
+import { Trophy, RefreshCw, AlertTriangle, ShieldCheck, Trash2, LogOut, Clock } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
@@ -22,6 +22,8 @@ export default function Admin() {
   const [winner, setWinner] = useState<TicketEntry | null>(null);
   const [totalTickets, setTotalTickets] = useState(0);
   const [user, setUser] = useState<User | null>(null);
+  const [countdownTarget, setCountdownTarget] = useState('');
+  const [savingCountdown, setSavingCountdown] = useState(false);
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -44,12 +46,26 @@ export default function Admin() {
     }
   };
 
+  const fetchCountdown = async () => {
+    try {
+      const { doc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      const snap = await getDoc(doc(db, 'system', 'countdown'));
+      if (snap.exists()) {
+        setCountdownTarget(snap.data().targetDate || '');
+      }
+    } catch (e) {
+      console.error("Error fetching countdown:", e);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setAuthLoading(false);
       if (firebaseUser && firebaseUser.email === 'bit.lottery.admin@gmail.com') {
         fetchEntries();
+        fetchCountdown();
       }
     });
     return () => unsubscribe();
@@ -125,6 +141,23 @@ export default function Admin() {
     } catch (e) {
       console.error(e);
       alert("Error clearing entries");
+    }
+  };
+
+  const handleSaveCountdown = async () => {
+    setSavingCountdown(true);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      await setDoc(doc(db, 'system', 'countdown'), {
+        targetDate: countdownTarget
+      });
+      alert("Countdown updated successfully!");
+    } catch (e: any) {
+      console.error(e);
+      alert("Error saving countdown: " + (e?.message || e));
+    } finally {
+      setSavingCountdown(false);
     }
   };
 
@@ -280,6 +313,32 @@ export default function Admin() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* COUNTDOWN SETTINGS PANEL */}
+        <div className="bg-white border-4 border-black p-6 shadow-retro col-span-1 md:col-span-2">
+          <h2 className="text-xl font-black uppercase mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-black" />
+            Lottery Countdown Timer
+          </h2>
+          <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Target Date & Time</label>
+              <input
+                type="datetime-local"
+                value={countdownTarget}
+                onChange={(e) => setCountdownTarget(e.target.value)}
+                className="w-full bg-white text-black p-3 border-2 border-black font-mono outline-none"
+              />
+            </div>
+            <button
+              onClick={handleSaveCountdown}
+              disabled={savingCountdown}
+              className="bg-black text-white font-black uppercase px-8 py-3.5 border-2 border-black hover:bg-gray-800 transition-colors shadow-retro-hover hover:-translate-y-1 active:translate-y-1 w-full sm:w-auto whitespace-nowrap disabled:opacity-50"
+            >
+              {savingCountdown ? 'Saving...' : 'Save Countdown'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
