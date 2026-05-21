@@ -297,13 +297,16 @@ export default function Admin() {
               </h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase">Send Prize To:</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase">Send Prize To ({winner.currency || 'SOL'} Address):</p>
                   <p className="font-bold text-lg bg-gray-100 p-2 border-2 border-black break-all select-all">{winner.payoutAddress}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase">Winning Ticket Contributed:</p>
-                    <p className="font-bold">{winner.usdValue ? `$${winner.usdValue.toFixed(2)}` : `${Number((winner as any).amountSol || winner.amount).toFixed(4)} SOL`}</p>
+                    <p className="font-bold">
+                      {Number(winner.amount || (winner as any).amountSol || 0).toFixed(4)} {winner.currency || 'SOL'}
+                      {winner.usdValue ? ` (~$${winner.usdValue.toFixed(2)})` : ''}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase">Their Total Tickets:</p>
